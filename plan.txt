@@ -1,0 +1,229 @@
+EXTREME VIBE CODING - IMPLEMENTATION PLAN
+=========================================
+
+Goal
+----
+A live meetup demo (2-3 h) comparing two Claude Code tracks building the same
+app, an online florist with a "design your own bouquet" feature:
+
+  - VANILLA track: Claude with a minimal working agreement
+  - XP track:      Claude with XP rules (TDD, BDD, small steps, refactor)
+
+Both tracks use the same model (Sonnet), the same skeleton and the same feature
+prompts. The only difference is the working agreement (CLAUDE.md).
+
+After each feature, a black-box acceptance suite runs against both apps. The
+whole suite runs every time, so regressions show up on a cumulative scoreboard.
+The audience can see the suite. The agents can't.
+
+
+0. DECISIONS NEEDED BEFORE STARTING  (please review)
+----------------------------------------------------
+D1. Repo layout. Proposal: three separate repos.
+      - florist-facilitator : prompts, API spec, acceptance suite, scripts
+      - florist-vanilla     : track repo (starts as the skeleton)
+      - florist-xp          : track repo (starts as the skeleton)
+    Is THIS repo (extreme-vibe-coding) the facilitator repo, or an umbrella for
+    planning notes only? The track repos must NOT sit below the facilitator
+    repo, or below any directory that contains it.
+D2. App tech stack. Proposal: TypeScript + Node + Fastify, Vitest as the
+    (empty) test runner, a JSON seed catalog, and a thin static HTML page.
+    Pick a stack most of the audience can read.
+D3. Acceptance suite stack. Proposal: Cucumber-JS (Gherkin) steps calling
+    the HTTP API with fetch. This is independent of D2.
+D4. Model: Sonnet for both tracks (from the discussion). Pin the exact
+    model ID in both repos' settings so a default change can't affect a run.
+D5. Meetup length: plan for 2 h, with 3 h as the stretch version (more live
+    features).
+
+
+1. FACILITATOR REPO STRUCTURE
+-----------------------------
+florist-facilitator/
+  prompts/
+    01-catalog.md
+    02-bouquet-builder.md
+    ...
+  api/
+    openapi.yaml              # the contract as of this tag, nothing in advance
+  acceptance/
+    features/                 # cumulative .feature files
+    steps/                    # step definitions -> HTTP calls to BASE_URL
+    cucumber.js
+  results/
+    feature-NN.<run-id>.json  # saved scoreboard results per tag and run
+  scripts/
+    deliver.sh                # copy the spec into both track repos
+    scoreboard.sh             # run suite against both apps, print grid
+    reset-tracks.sh           # reset both tracks to the skeleton or a tag
+    replay.sh                 # dry run: deliver + run agent for tags 1..N
+  CHANGELOG.md                # per tag: new features, contract changes,
+                              # rewritten scenarios
+
+Commit rules:
+  - One commit per feature, tagged feature-01, feature-02, ...
+  - Each commit holds: the new prompt, openapi.yaml as of that feature, and
+    the full acceptance suite updated to that API version.
+  - Consistency check: `git diff feature-(N-1) feature-N -- api/` must be
+    fully explained by prompts/NN-*.md. Automate this check if possible, or
+    at least do it by hand during rehearsal.
+  - Twist scenarios get a tag (@contract-change) so the scoreboard can tell
+    "contract changed and the track hasn't adapted" apart from a "real
+    regression".
+
+
+2. SKELETON APP (identical for both tracks)
+-------------------------------------------
+  - Project setup, build, lint, and the test runner wired up but with no tests
+  - HTTP server on a fixed port, started with a fixed command
+    (e.g. `npm start`, with PORT from the environment)
+  - GET /health endpoint (so scoreboard.sh can wait for startup)
+  - data/catalog.json seed: about 10-12 flowers and greenery with name, colour,
+    category (flower/greenery) and price per stem. Fields needed by later
+    features (season, stem length) are left out on purpose, so the twists
+    really are twists.
+  - Assets: coloured SVG shapes or emoji per flower. Spend no time on CSS.
+  - docs/api.yaml: empty placeholder, filled by deliver.sh
+  - README: how to start and test. Identical in both tracks.
+
+Both track repos are created from the same skeleton commit, tagged
+`skeleton` in each.
+
+Isolation:
+  - .claude/settings.json in each track: pin the model, deny Read/Bash access
+    to the facilitator repo path, and deny the other track's path.
+  - Keep the facilitator repo in an unrelated directory.
+
+
+3. WORKING AGREEMENTS (the only difference between tracks)
+----------------------------------------------------------
+VANILLA CLAUDE.md (minimal and realistic, not sabotaged):
+  - What the project is, how to run it, that the API contract is in
+    docs/api.yaml.
+  - Nothing about tests or process.
+
+XP CLAUDE.md:
+  - Turn each example scenario in the prompt into an executable test first
+    (red), implement the minimum to pass (green), then refactor.
+  - Work in small steps. Run the full test suite after each step.
+  - Never finish a feature with failing tests. Previous behaviour is
+    protected by the existing tests.
+  - When the contract changes, update the affected tests first, then the code.
+  - Keep the domain logic separate from the HTTP layer.
+  - Commit after each green step (optional: makes the history readable on
+    screen).
+
+Both: same model, same permission mode, same prompt delivery mechanism.
+
+
+4. FEATURE SEQUENCE (prompts + API slice + scenarios per tag)
+-------------------------------------------------------------
+Each prompt contains: the user-facing description, the API changes (also
+reflected in docs/api.yaml), and THIS feature's Gherkin scenarios as examples.
+Prompts never repeat earlier features' scenarios. The acceptance suite tests
+exactly the scenarios given in the prompts, with no hidden edge cases.
+
+  01 Catalog              GET /flowers (price per stem)
+  02 Bouquet builder      create a bouquet, add/remove stems, see the total
+  03 Bouquet rules        min/max stems, max 4 colours, at least 1 greenery
+  04 Add-ons              wrapping, vase, card message; size-dependent price
+  05 Seasonal avail.      flowers available in some months only; affects
+                          the catalog AND bouquet validation (date passed
+                          as a parameter so tests are deterministic)
+  06 Discounts            10 of the same stem = 15% off; promo codes;
+                          interaction with add-ons
+  07 TWIST pricing        price depends on stem length; VAT shown
+                          separately  (@contract-change on 02/04/06)
+  08 TWIST out of stock   saved bouquets get substitution suggestions
+
+Draft API sketches are written per feature in api/openapi.yaml. Endpoint
+names are only introduced in the feature that needs them.
+
+Regression traps to plant on purpose (to check in rehearsal):
+  - 05 must not break 02 totals for available flowers
+  - 06 discounts must not apply to add-ons unless stated; rounding
+  - 07 changes the price basis, so 03/04/06 interactions must still hold
+  - 08 substitutions must respect 03 rules and 05 availability
+
+Budget: 1-3 pre-built before the meetup, 4-6 live in 2 h, 4-8 live in 3 h.
+
+
+5. SCRIPTS
+----------
+deliver.sh <tag>
+  - Check out <tag> in the facilitator repo
+  - Copy api/openapi.yaml to <track>/docs/api.yaml for both tracks
+  - Print the prompt (prompts/NN-*.md) to paste into both Claude sessions,
+    or pass it non-interactively in replay mode
+scoreboard.sh [tag]
+  - Start both apps (different ports), wait for /health
+  - Run the cucumber suite with BASE_URL for each app
+  - Print a grid: rows = feature scenarios, cols = vanilla | xp, cells
+    green/red, with @contract-change marked differently
+  - Save the JSON to results/feature-NN.<run-id>.json
+  - Optional: a static HTML page rendering the history grid across tags
+    (for the final slide)
+reset-tracks.sh <tag|skeleton>
+  - Hard-reset both track repos to the given tag
+replay.sh <from> <to>
+  - For each tag: deliver, run `claude -p` in each track with the prompt,
+    commit, tag track-feature-NN, run the scoreboard. Used for dry runs and
+    for pre-building features 1-3.
+
+
+6. REHEARSAL / TUNING
+---------------------
+  - Run the full replay (01-08) at least 3 times. Record how often each
+    regression trap actually triggers on vanilla, and whether XP stays
+    green.
+  - If divergence appears in less than about 2 of 3 runs, sharpen the twists
+    (more cross-cutting rules) rather than weakening the vanilla prompt.
+  - Measure the time per feature per track to fix the live feature count.
+  - If XP regularly fails too, tighten the XP CLAUDE.md or the scenarios.
+  - Keep a "best run" set of track tags as a fallback if the live run
+    derails or the wifi dies.
+
+
+7. MEETUP RUNBOOK (2 h version)
+-------------------------------
+  0:00-0:15  Intro, the claim framed honestly ("let's see if this holds up"),
+             show both CLAUDE.md files, the facilitator repo, and the git log
+             timestamps proving the suite was committed beforehand
+  0:15-0:20  Show features 1-3 (pre-built) and the scoreboard: likely
+             all green on both tracks
+  0:20-1:40  Live rounds, for each feature:
+               - show the prompt + API diff + Gherkin, and ask the audience
+                 for predictions
+               - deliver.sh, start both sessions side by side in two terminals
+               - narrate while they work, and show diffs from the other track
+               - scoreboard.sh, discuss red cells (contract vs regression)
+  1:40-2:00  History grid, code walkthrough of both tracks, discussion:
+             speed vs safety, "isn't XP just passing because it wrote the same
+             tests?", what changes with Opus (verifiability argument)
+
+
+8. RISKS
+--------
+  - Vanilla doesn't break: treat it as a valid outcome and discussion point.
+    Reduce the risk with rehearsal data.
+  - Live latency or outage: use the pre-built tags plus recorded best-run
+    tags as fallback.
+  - An agent discovers the acceptance suite: path isolation and deny rules
+    (section 2).
+  - Accusations of unfair prompting: identical prompts, the diff check, and
+    the committed timestamps.
+  - Non-deterministic dates/prices in tests: pass dates explicitly, and fix
+    the rounding rules in the spec.
+
+
+9. ORDER OF WORK
+----------------
+  1. Resolve D1-D5
+  2. Build the skeleton and create both track repos from it
+  3. Write both CLAUDE.md files and the isolation settings
+  4. Facilitator repo: write feature 01 (prompt, API, scenarios, steps) and
+     scoreboard.sh, then run it end to end by hand once
+  5. deliver.sh, reset-tracks.sh, replay.sh
+  6. Features 02-08 (twists last), with the consistency check per tag
+  7. Rehearsals (section 6), and tune
+  8. Pre-build features 1-3, tag them, and prepare fallback tags and slides

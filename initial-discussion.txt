@@ -1,0 +1,129 @@
+
+in my meetup, i want to demonstrate that developing software with claude and XP guidelines (TDD, BDD, small steps, etc.) is better than with claude alone.
+
+my idea is to start up two projects in parallel and implement the same app, one feature at a time. the idea for the app is an online florist which has a concept that you can design your own bouquets.
+
+i expect that the attendeed start noticing how the workflow/process without XP guidelines start bumping into problems after a couple of features - code smells, bugs, etc.
+
+i want to discuss:
+
+is this idea even feasible?
+should i use simpler models, like sonnet, as this is a small project and opus doesn't need XP guidelines to create good code at that level ... if yes, sonnet or haiku?
+is this feasible within 2 hours of meetup duration (possibly 3)?
+is it better to prepare with a skeleton codebase, some assets (e.g. flower images), etc.
+
+Thought for 17s
+Thought for 17s
+Yes, it's feasible, and it's a good meetup format. The main risk is that the demo may not prove what you expect, so it needs to be designed for that. Here's my take on each question.
+
+Is the idea feasible?
+Yes, with one big caveat: current models write pretty clean code even without guidance, so the vanilla track might not fall apart in 2 hours. If you just add feature after feature, both codebases may look fine at the end. Your audience then sees a draw, or suspects you rigged it.
+
+What reliably exposes the difference isn't adding features but changing earlier decisions. Regressions show up when a new requirement cuts across existing behaviour, like pricing rules changing after discounts exist, or availability rules affecting bouquets that were valid yesterday. That's where tests earn their keep and where the vanilla track quietly breaks things it doesn't notice. So design your feature sequence with deliberate "twists." For the florist, something like:
+
+Flower catalog with per-stem prices
+Design a bouquet: add or remove stems, see the total
+Bouquet rules: min/max stems, max 4 colours, at least one "greenery" stem
+Add-ons: wrapping, vase, card message, with size-dependent pricing
+Seasonal availability: some flowers only available in certain months, which affects both catalog and bouquet validation
+Discounts: "10 of the same stem = 15% off" plus promo codes, which interact with add-ons
+Twist: prices now depend on stem length, and VAT must be shown separately
+Twist: a flower goes out of stock, so saved bouquets need substitution suggestions
+A few other things make the result more convincing:
+
+Keep a hidden acceptance test suite that only you run against both apps after each feature. It works as an objective scoreboard ("vanilla: 23/30 passing, XP: 30/30"). It's much more persuasive than eyeballing code smells. Don't give it to either Claude, or the vanilla track stops being vanilla.
+Use identical feature prompts for both tracks. The only difference should be the working agreement, for example a CLAUDE.md with your XP rules versus a minimal one. Otherwise people will say you prompted one side better.
+Dry-run it several times. Model output varies, and you want to know how often the divergence actually appears. If it only shows up one run in three, adjust the twists.
+Frame it honestly. "Let's see if this holds up" plays better with a dev audience than "watch this fail." It also protects you if the vanilla side does well. A surprisingly good vanilla result is itself an interesting discussion point.
+Which model?
+Use the same model on both tracks, and I'd pick Sonnet.
+
+Haiku would make the difference more dramatic, but it invites the objection "you just picked a weak model," and the XP track may also struggle with it. Sonnet is a believable "what people actually use" choice and is fast enough for live work. Speed matters a lot when an audience is watching.
+
+Opus is a fair choice too, but then your argument changes. With Opus, the XP benefit is less about cleaner code and more about verifiability: you know nothing broke, the steps are reviewable, and you can steer in small increments. That's arguably the more interesting and durable argument, since models will keep getting better. You could mention it in the discussion even if you demo with Sonnet.
+
+Also expect the XP track to be slower, with more turns and more test runs. Don't hide that. "XP was slower per feature but didn't regress" is an honest trade-off worth discussing.
+
+Does it fit in 2–3 hours?
+Two hours is tight, and three is comfortable. A realistic 2-hour split:
+
+10–15 min: intro and the two working agreements
+75–90 min: building, which is realistically 4–6 features live
+20–30 min: scoreboard, code walkthrough of both, discussion
+Some ways to make it fit:
+
+Run both tracks in parallel in Claude Code, in two terminals side by side, letting it work agentically. Typing prompts into chat and copying code around would eat your time.
+Pre-build features 1–3 in both tracks before the meetup, also with the same prompts, and tag them in git. Live time then goes to the twist features, where the interesting divergence happens.
+Tag every feature step in git so you can recover instantly if a live run derails or the wifi dies.
+Narrate while it works. While Claude is thinking, show the diff from the other track, or ask the audience to predict what will break.
+Skeleton and assets?
+Yes, definitely prepare a skeleton, and make it identical for both tracks: framework, build, linter, an empty test runner, and a seed catalog as JSON. Including the test runner in the vanilla skeleton is fine. What differs is whether the process uses it. Without a skeleton, the first 15 minutes are boilerplate nobody learns from.
+
+For assets, keep it minimal. Coloured SVG shapes, emoji, or a handful of freely licensed images are plenty. Avoid spending time on CSS and visuals. The story lives in the domain logic: pricing, rules, availability. A thin UI, or even a mostly API-driven app with a simple page, keeps attention where you want it. A visually impressive vanilla UI can also distract people from its hidden bugs, which works against your point.
+
+One optional idea: if your audience is hands-on, let two volunteers "drive" the tracks, one per side, using your prepared prompts. It's more engaging, but it adds unpredictability, so I'd only do it once you've rehearsed it yourself.
+
+If it'd help, I can draft the two CLAUDE.md files (XP vs. vanilla) or the hidden acceptance scenarios in Gherkin for the florist features.
+
+i assume i explain and show the acceptance tests to the crowd. we can see results after every feature
+
+
+Thought for 6s
+Thought for 6s
+Good, that's better than keeping them secret from the audience. They should stay hidden from Claude, not from the crowd. Watching the scoreboard update after every feature gives the room a shared "score" to react to, and it makes the regressions visible the moment they happen.
+
+A few things to get right for this to work.
+
+Show the scenarios before each feature, run them after. Put up the Gherkin for the next feature, let the room read it, and maybe ask them to guess which track will trip. Then run both apps against it once the feature is done. It turns each round into a small prediction game and keeps people engaged while Claude is working.
+
+Re-run the whole suite every time, not just the new feature. This is where your point gets made. The new feature will probably pass on both sides. The interesting moment is when feature 6 lands and three scenarios from feature 2 suddenly go red on one track. A cumulative scoreboard shows this at a glance, for example a grid with features as rows, tracks as columns, and green/red cells.
+
+Both apps need a shared interface your tests can call. This is the main practical catch. If each Claude invents its own API shape or function names, one test suite can't run against both. Fix the contract up front: put endpoint names, request and response shapes, or domain function signatures in the skeleton, or state them in each feature prompt. Testing through a thin HTTP API is usually the most robust option, since it doesn't care how the code is organised inside.
+
+Decide what both tracks get to see. I'd give both tracks the same scenario examples as plain text in the feature prompt, so they get the same spec. The difference is what they do with it. The XP track turns the examples into executable tests and keeps running all of them. The vanilla track just implements. Your acceptance suite should then test exactly those examples and nothing extra. If you add hidden edge cases, someone in the room will rightly say the vanilla track was never told about them. With identical specs, any red cell is purely a process failure, which is the claim you want to demonstrate.
+
+Commit the suite before the meetup and show that you did. Showing the git log timestamp takes ten seconds and removes any suspicion that you're tweaking tests mid-session to favour one side.
+
+One thing to be ready for: the XP track's own tests and your acceptance suite will overlap heavily, so someone may ask "isn't the XP side just passing because it wrote the same tests?" The honest answer is yes, partly, and that's the point. The discipline of turning the spec into tests and re-running them is what prevents the regressions. It's a good question to lean into during the discussion.
+
+If you'd like, I can draft the Gherkin scenarios for the eight florist features, including the cross-feature regression traps, along with a sketch of the shared API contract.
+
+specifying feature by feature would then include specifying api? we want to avoid the agent from inferring future requests from the interfaces. also, when twists force change in the api, we should modify the acceptance tests also. this means api spec and acceptance tests should be stored together and versioned somehow - including the prompts ... a separate git repo where each commit contains the new feature prompt and the latest version of interfaces & acceptance tests. correct?
+
+
+Thought for 11s
+Thought for 11s
+Yes, that's correct, and it's a clean design. The facilitator repo becomes the single source of truth for what each track is told and how it's judged. Each commit (tagged feature-01, feature-02, …) holds three things: the new feature prompt, the API spec as it stands after that feature, and the full acceptance suite updated to that version of the API.
+
+Something like:
+
+florist-facilitator/
+prompts/
+01-catalog.md
+02-bouquet-builder.md
+...
+api/
+openapi.yaml          # current contract, only what exists so far
+acceptance/
+features/             # .feature files, cumulative
+steps/                # step definitions calling the HTTP API
+scripts/
+deliver.sh            # copy spec into both track repos
+scoreboard.sh         # run suite against both apps, print grid
+Some refinements are worth building in.
+
+The prompt should describe exactly the API diff. The agents only learn about a change through the prompt and the spec file you hand them. A useful rehearsal check is that git diff feature-05 feature-06 -- api/ should be fully explained by prompts/06-*.md. If the spec changed in a way the prompt doesn't mention, a track that fails it was set up to fail. That diff is also nice to put on screen for the audience before each round.
+
+Separate "the contract changed" from "something regressed." When a twist changes the API, earlier scenarios get rewritten too, so a red cell right after a twist could mean either a real regression or that the track hasn't adapted to the new contract yet. Both are legitimate failures, but they tell different stories. Tag twist scenarios, or keep a short changelog per tag, so you can say "these three went red because the contract changed, and this one went red because discounts broke." The second kind is the one that makes your point.
+
+Keep the acceptance suite physically out of the agents' reach. Only the spec gets copied into the track repos, for example as docs/api.yaml. The tests run from the facilitator repo against each app's base URL. Don't put the facilitator repo in a parent directory of the track repos, because an agent searching around could find it. Put it somewhere unrelated, and consider denying that path in the Claude Code permission settings.
+
+Black-box HTTP tests decouple the suite from the app's tech stack. Your tests can be in whatever you like, such as Cucumber-JS or Python's behave, as long as both apps expose the same API. The skeleton only needs to fix the port and the startup command.
+
+Think about where the example scenarios in the prompt come from. Since both tracks get the scenario examples as text, the prompt for feature N can include that feature's .feature file content directly. That keeps the spec and the tests from drifting apart. Don't include earlier features' scenarios in later prompts, though. Remembering those is precisely the XP track's job.
+
+Save the scoreboard results per tag. Store each run's output, for example as results/feature-06.json, so at the end you can show the full history grid instead of only the final state. The "it was green at feature 3 and went red at feature 6" moment is your strongest slide.
+
+As a bonus, this setup makes dry runs cheap. Reset both track repos to the skeleton, replay tags 1 through N, and compare runs. After two or three rehearsals you'll know which twists reliably produce divergence.
+
+If you'd like, I can draft the first few tags concretely: the prompts, the growing openapi.yaml, and the Gherkin for features 1–3 plus the first twist.
