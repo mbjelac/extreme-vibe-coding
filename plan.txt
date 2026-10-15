@@ -9,7 +9,7 @@ app, an online florist with a "design your own bouquet" feature:
   - VANILLA track: Claude with a minimal working agreement
   - XP track:      Claude with XP rules (TDD, BDD, small steps, refactor)
 
-Both tracks use the same model (Sonnet), the same skeleton and the same feature
+Both tracks use the same model (Sonnet 4.5, see D4), the same skeleton and the same feature
 prompts. The only difference is the working agreement (CLAUDE.md).
 
 After each feature, a black-box acceptance suite runs against both apps. The
@@ -17,29 +17,54 @@ whole suite runs every time, so regressions show up on a cumulative scoreboard.
 The audience can see the suite. The agents can't.
 
 
-0. DECISIONS NEEDED BEFORE STARTING  (please review)
-----------------------------------------------------
-D1. Repo layout. Proposal: three separate repos.
-      - florist-facilitator : prompts, API spec, acceptance suite, scripts
-      - florist-vanilla     : track repo (starts as the skeleton)
-      - florist-xp          : track repo (starts as the skeleton)
-    Is THIS repo (extreme-vibe-coding) the facilitator repo, or an umbrella for
-    planning notes only? The track repos must NOT sit below the facilitator
-    repo, or below any directory that contains it.
-D2. App tech stack. Proposal: TypeScript + Node + Fastify, Vitest as the
-    (empty) test runner, a JSON seed catalog, and a thin static HTML page.
-    Pick a stack most of the audience can read.
-D3. Acceptance suite stack. Proposal: Cucumber-JS (Gherkin) steps calling
-    the HTTP API with fetch. This is independent of D2.
-D4. Model: Sonnet for both tracks (from the discussion). Pin the exact
-    model ID in both repos' settings so a default change can't affect a run.
+0. DECISIONS
+------------
+D1. Repo layout:
+      - control: THIS repo (extreme-vibe-coding). Prompts, API spec,
+        acceptance suite, scripts, results, plus track/ (the skeleton
+        source) and xp-claude-addition.md.
+      - florist-track: ONE GitHub repo with the skeleton, set up manually
+        from control/track/. Pushing to main is disabled on GitHub.
+      - Two local clones of florist-track, cloned manually and renamed:
+          ~/meetup-tracks/florist-vanilla   (used as is)
+          ~/meetup-tracks/florist-xp        (XP addition appended to
+                                             CLAUDE.md, committed locally)
+    Neither clone ever pushes. The clones must NOT sit inside the control
+    repo or anywhere below a directory that contains it.
+D2. App stack: TypeScript + Node + Fastify, Vitest as the (empty) test
+    runner, a JSON seed catalog, and a thin static HTML page.
+D3. Acceptance suite: Cucumber-JS (Gherkin) steps calling the HTTP API with
+    fetch.
+D4. Model: Claude Sonnet 4.5, pinned as `claude-sonnet-4-5-20250929` in both
+    tracks' .claude/settings.json.
+    Why this one:
+      - It's a capable agentic coder that reliably gets a feature to green
+        tests, so features 1-6 should be achievable on both tracks.
+      - It's a generation behind Sonnet 5 (near-Opus on coding), so it's
+        more likely to miss cross-cutting impacts when the twists land.
+        That's the gap the demo needs.
+      - It's still active. Sonnet 4 would make more mistakes, but it's
+        deprecated and could be retired before the meetup.
+      - Pin the dated ID, not an alias, so the model can't change between
+        rehearsal and meetup.
+    Check this in rehearsal (section 6). If the vanilla track never regresses
+    on Sonnet 4.5, sharpen the twists first. Change the model only as a last
+    resort. If XP can't reach green before the twists, move up to
+    `claude-sonnet-4-6`.
 D5. Meetup length: plan for 2 h, with 3 h as the stretch version (more live
     features).
+D6. Contract changes:
+    - Default: twists are backward compatible. Old scenarios stay valid and
+      keep running unchanged, so any red cell on them is a real regression.
+    - Exception: if a twist must invalidate a scenario, retire it and add a
+      replacement. Scenarios are never edited in place (section 1a).
+    - On the scoreboard, a retired scenario keeps its row, grey from the
+      retiring tag onwards. The replacement is a new row (section 5).
 
 
-1. FACILITATOR REPO STRUCTURE
------------------------------
-florist-facilitator/
+1. CONTROL REPO STRUCTURE (this repo)
+-------------------------------------
+control/  (= extreme-vibe-coding)
   prompts/
     01-catalog.md
     02-bouquet-builder.md
@@ -55,8 +80,14 @@ florist-facilitator/
   scripts/
     deliver.sh                # copy the spec into both track repos
     scoreboard.sh             # run suite against both apps, print grid
-    reset-tracks.sh           # reset both tracks to the skeleton or a tag
+    reset-tracks.sh           # reset both clones to `start` or a tag
     replay.sh                 # dry run: deliver + run agent for tags 1..N
+  track/                      # the skeleton app = source of florist-track
+    CLAUDE.md                 # the VANILLA working agreement
+    .claude/settings.json     # model pin + sandbox read rules (section 2)
+    ...
+  xp-claude-addition.md       # ONLY the XP section, to paste at the end of
+                              # CLAUDE.md in the florist-xp clone
   CHANGELOG.md                # per tag: new features, contract changes,
                               # rewritten scenarios
 
@@ -67,14 +98,34 @@ Commit rules:
   - Consistency check: `git diff feature-(N-1) feature-N -- api/` must be
     fully explained by prompts/NN-*.md. Automate this check if possible, or
     at least do it by hand during rehearsal.
-  - Twist scenarios get a tag (@contract-change) so the scoreboard can tell
-    "contract changed and the track hasn't adapted" apart from a "real
-    regression".
+
+1a. Scenario authoring rules
+  - Every scenario has a stable ID tag, e.g. @id:02-bouquet-total. The
+    scoreboard uses it as the row key, not the scenario name.
+  - One behaviour per scenario, usually a single Then. A twist then outdates
+    a scenario either fully or not at all.
+  - Twists add new meanings and never redefine existing ones. Example: for
+    the VAT twist, "the bouquet total" stays the gross total, and "the net
+    price" and "the VAT amount" are added.
+  - A scenario's identity is its full content. If ANY step would change, the
+    scenario is retired and replaced, never edited:
+      - the old scenario gets @retired-at:NN and stays in the file. The
+        runner skips it from tag NN onwards.
+      - the new scenario gets a new @id and @replaces:<old-id>, and lives in
+        the feature file of the twist that caused it.
+  - Step phrases never change meaning. Step definitions in acceptance/steps/
+    are shared, so changing one silently changes every scenario that uses
+    it. If a meaning must change, add a new step phrase. Document this rule
+    in acceptance/steps/README.md.
+  - CHANGELOG.md lists the retired/replacement pairs per tag.
 
 
 2. SKELETON APP (identical for both tracks)
 -------------------------------------------
-  - Project setup, build, lint, and the test runner wired up but with no tests
+  - Project setup, build, lint, and the test runner installed (Vitest, an
+    `npm test` script) but with no tests. This is standard project tooling,
+    so neither side can be called handicapped. Nothing in the skeleton
+    points at it.
   - HTTP server on a fixed port, started with a fixed command
     (e.g. `npm start`, with PORT from the environment)
   - GET /health endpoint (so scoreboard.sh can wait for startup)
@@ -84,25 +135,76 @@ Commit rules:
     really are twists.
   - Assets: coloured SVG shapes or emoji per flower. Spend no time on CSS.
   - docs/api.yaml: empty placeholder, filled by deliver.sh
-  - README: how to start and test. Identical in both tracks.
+  - README: what the app is and how to start it. Nothing about testing or
+    process. Identical in both tracks. Test-related instructions live only
+    in the XP CLAUDE.md (section 3).
 
-Both track repos are created from the same skeleton commit, tagged
-`skeleton` in each.
+Setting up the tracks (all manual):
+  1. Create the florist-track repo on GitHub from control/track/, and
+     disable pushing to main.
+  2. Clone it, rename the folder to florist-vanilla. Clone it again, rename
+     the folder to florist-xp.
+  3. In florist-xp: paste control/xp-claude-addition.md at the end of
+     CLAUDE.md and commit locally ("XP working agreement"). No push.
+  4. Tag `start` in both clones (vanilla: the cloned commit; xp: the
+     CLAUDE.md commit). `git diff origin/main start` in florist-xp shows
+     exactly the XP addition. Use it as the opening slide.
+  5. Never push from either clone. Feature commits and tags (vanilla-/xp-
+     feature-NN) stay local.
 
 Isolation:
-  - .claude/settings.json in each track: pin the model, deny Read/Bash access
-    to the facilitator repo path, and deny the other track's path.
-  - Keep the facilitator repo in an unrelated directory.
+  - Rule: "do not read anything in the parent folder except this folder".
+    The same committed .claude/settings.json in both tracks, entirely
+    repo-contained, with nothing in user settings:
+      {
+        "model": "claude-sonnet-4-5-20250929",
+        "sandbox": {
+          "enabled": true,
+          "filesystem": {
+            "denyRead": [".."],
+            "allowRead": ["."]
+          }
+        }
+      }
+    - Shell commands (Bash) run in the sandbox. They can't read anything in
+      ~/meetup-tracks/ except their own folder (the narrower rule wins), so
+      the other track is off limits. They can only write inside their own
+      folder.
+    - ~/.nvm is not in the parent folder, so Node keeps working without an
+      exception.
+    - Claude's file tools (Read/Grep/Glob) can't express "parent except me",
+      because deny rules always beat allow rules. Instead, reads outside the
+      working folder ask for permission. Run the track sessions in a
+      permission mode that asks (NOT auto or bypassPermissions), and answer
+      no.
+    - The control repo is outside the parent folder, so the sandbox doesn't
+      cover it. Keep it far from ~/meetup-tracks/; the file tools would
+      still ask before reading it.
+    - So the two tracks' committed files differ ONLY in CLAUDE.md.
+  - Check in rehearsal:
+    - ".." isn't a documented example. The docs say relative paths in repo
+      settings resolve from the project root, so ".." should be the parent.
+      From a track session, ask Claude to `cat` a file in the other track:
+      it must fail. Ask it to Read one: it must ask for permission.
+    - `npm test` / `npm start` work inside the sandbox (Node from ~/.nvm).
+    - The sandbox also limits network access: preinstall node_modules in the
+      skeleton, and allow the npm registry if the agents need to add
+      packages.
 
 
 3. WORKING AGREEMENTS (the only difference between tracks)
 ----------------------------------------------------------
-VANILLA CLAUDE.md (minimal and realistic, not sabotaged):
+xp-claude-addition.md holds only the XP section. Appended to the vanilla
+CLAUDE.md, it makes the XP track's agreement, so the diff contains only
+the XP rules.
+
+VANILLA CLAUDE.md (control/track/CLAUDE.md; minimal and realistic, not
+sabotaged):
   - What the project is, how to run it, that the API contract is in
     docs/api.yaml.
   - Nothing about tests or process.
 
-XP CLAUDE.md:
+XP section (control/xp-claude-addition.md):
   - Turn each example scenario in the prompt into an executable test first
     (red), implement the minimum to pass (green), then refactor.
   - Work in small steps. Run the full test suite after each step.
@@ -113,15 +215,28 @@ XP CLAUDE.md:
   - Commit after each green step (optional: makes the history readable on
     screen).
 
-Both: same model, same permission mode, same prompt delivery mechanism.
+Both: same model, same permission mode (one that asks, see section 2), same prompt delivery mechanism.
 
 
 4. FEATURE SEQUENCE (prompts + API slice + scenarios per tag)
 -------------------------------------------------------------
 Each prompt contains: the user-facing description, the API changes (also
 reflected in docs/api.yaml), and THIS feature's Gherkin scenarios as examples.
-Prompts never repeat earlier features' scenarios. The acceptance suite tests
-exactly the scenarios given in the prompts, with no hidden edge cases.
+Prompts describe ONLY the new feature. They never repeat earlier features'
+scenarios, and never say which earlier behaviour must still hold. A twist
+that retires a scenario states the new behaviour, but not what it replaces.
+The acceptance suite tests exactly the scenarios given in the prompts, with
+no hidden edge cases.
+
+Sessions: each track runs ONE continuous Claude session for all features
+(01-08), so both agents can remember earlier features from the conversation.
+Neither track's session is ever restarted or cleared.
+  - Start: `claude --model <D4> --session-id <uuid> -n florist-<track>`.
+    Store the session IDs in the control repo (not in the track repos).
+  - Every later feature: `claude --resume <uuid>`, interactive or with -p.
+  - Discussion point: over 8 features, auto-compaction may summarise early
+    conversation on both tracks. Then the session is no longer a reliable
+    memory, and only the XP track has the tests as a durable one.
 
   01 Catalog              GET /flowers (price per stem)
   02 Bouquet builder      create a bouquet, add/remove stems, see the total
@@ -133,7 +248,9 @@ exactly the scenarios given in the prompts, with no hidden edge cases.
   06 Discounts            10 of the same stem = 15% off; promo codes;
                           interaction with add-ons
   07 TWIST pricing        price depends on stem length; VAT shown
-                          separately  (@contract-change on 02/04/06)
+                          separately  (backward compatible: default stem
+                          length keeps old prices, total stays
+                          gross; any retirements listed in CHANGELOG)
   08 TWIST out of stock   saved bouquets get substitution suggestions
 
 Draft API sketches are written per feature in api/openapi.yaml. Endpoint
@@ -151,28 +268,76 @@ Budget: 1-3 pre-built before the meetup, 4-6 live in 2 h, 4-8 live in 3 h.
 5. SCRIPTS
 ----------
 deliver.sh <tag>
-  - Check out <tag> in the facilitator repo
+  - Check out <tag> in the control repo
   - Copy api/openapi.yaml to <track>/docs/api.yaml for both tracks
   - Print the prompt (prompts/NN-*.md) to paste into both Claude sessions,
     or pass it non-interactively in replay mode
 scoreboard.sh [tag]
   - Start both apps (different ports), wait for /health
   - Run the cucumber suite with BASE_URL for each app
-  - Print a grid: rows = feature scenarios, cols = vanilla | xp, cells
-    green/red, with @contract-change marked differently
+  - Run the active scenarios only (skip @retired-at <= current tag)
+  - Print a terminal grid: rows = active scenarios (by @id), cols =
+    vanilla | xp, cells green/red
   - Save the JSON to results/feature-NN.<run-id>.json
-  - Optional: a static HTML page rendering the history grid across tags
-    (for the final slide)
-reset-tracks.sh <tag|skeleton>
-  - Hard-reset both track repos to the given tag
-replay.sh <from> <to>
-  - For each tag: deliver, run `claude -p` in each track with the prompt,
-    commit, tag track-feature-NN, run the scoreboard. Used for dry runs and
-    for pre-building features 1-3.
+  - Generate an HTML history grid from all saved results (shown after
+    each round and as the final slide):
+      - rows = every scenario ever introduced, in feature order, with each
+        replacement directly below the scenario it replaces
+      - columns = tags, with a vanilla and an xp cell per tag
+      - cell states: blank (not yet introduced), green (pass), red (fail),
+        grey (retired, from the @retired-at tag onwards)
+      - hovering a grey row shows which scenario replaced it, and the reverse
+reset-tracks.sh <tag|start>
+  - Hard-reset both clones to the given tag. `start` keeps the XP
+    CLAUDE.md commit in florist-xp.
+replay.sh <tag>...
+  - Takes an explicit list of control-repo tags, e.g. `feature-01 feature-02
+    feature-03 pilot-twist` for the pilot (6a), or feature-01..08 for a full
+    run.
+  - For each tag: deliver, run `claude -p --resume <track-session-id>` in
+    each track with the prompt (the same session across all tags), commit,
+    tag vanilla-feature-NN / xp-feature-NN, back up the session transcript (see below), and
+    run the scoreboard. Used for dry runs and for pre-building features 1-3.
+Session snapshots (needed for fallback, since a session can't be rewound):
+  - At each track tag, copy the session transcript
+    (~/.claude/projects/<track-dir>/<uuid>.jsonl) to
+    control/sessions/<run-id>/<track>/feature-NN.jsonl.
+  - Restore = reset the track to its git tag + restore the matching
+    transcript, then resume it with --fork-session. Verify that this
+    procedure works in rehearsal.
 
 
 6. REHEARSAL / TUNING
 ---------------------
+6a. Pilot (before writing features 04-08)
+  Goal: find out cheaply whether the idea works at all, before writing the
+  full suite.
+  - Scope: features 01-03 (written for real, as the final versions) plus ONE
+    twist, built directly on top of 03:
+      pilot-twist = stem-length pricing (the core of 07, without the
+      add-on/discount parts that 04-06 don't have yet). It changes the price
+      basis under the 02 totals and the 03 rules, with backward-compatible
+      defaults (D6).
+  - In the control repo, pilot-twist lives on a `pilot` branch off the
+    feature-03 tag, so it doesn't disturb the main feature-NN sequence.
+  - Run replay.sh feature-01 feature-02 feature-03 pilot-twist 1-2 times.
+  - Look at:
+      - Does XP reach green on 01-03 and the twist? (Is the model strong
+        enough?)
+      - Does vanilla go red on any 02/03 scenario after the twist? (Is the
+        model weak enough, and does the twist bite?)
+      - Time per feature, and token cost per run. Extrapolate to the full run.
+      - Do the isolation, sessions and snapshots work end to end?
+  - Decide:
+      - Divergence seen: go on to write 04-08.
+      - Vanilla stays green: sharpen the twist (more cross-cutting) and pilot
+        again, before investing in 04-08.
+      - XP can't reach green: fix the XP addition or the scenarios, or move
+        to the stronger model (D4).
+  - The real 07 is written later on main, on top of 04-06. The pilot twist
+    is a throwaway.
+
+6b. Full rehearsals
   - Run the full replay (01-08) at least 3 times. Record how often each
     regression trap actually triggers on vanilla, and whether XP stays
     green.
@@ -180,23 +345,26 @@ replay.sh <from> <to>
     (more cross-cutting rules) rather than weakening the vanilla prompt.
   - Measure the time per feature per track to fix the live feature count.
   - If XP regularly fails too, tighten the XP CLAUDE.md or the scenarios.
-  - Keep a "best run" set of track tags as a fallback if the live run
-    derails or the wifi dies.
+  - Keep a "best run" set of track tags, with their session snapshots, as a
+    fallback if the live run derails or the wifi dies.
+  - Check that the session survives resuming across days (pre-built 1-3 the
+    day before, live from 4). Check whether compaction happens by feature 8.
 
 
 7. MEETUP RUNBOOK (2 h version)
 -------------------------------
   0:00-0:15  Intro, the claim framed honestly ("let's see if this holds up"),
-             show both CLAUDE.md files, the facilitator repo, and the git log
+             show both CLAUDE.md files, the control repo, and the git log
              timestamps proving the suite was committed beforehand
   0:15-0:20  Show features 1-3 (pre-built) and the scoreboard: likely
              all green on both tracks
   0:20-1:40  Live rounds, for each feature:
                - show the prompt + API diff + Gherkin, and ask the audience
                  for predictions
-               - deliver.sh, start both sessions side by side in two terminals
+               - deliver.sh, resume both sessions side by side in two terminals
                - narrate while they work, and show diffs from the other track
-               - scoreboard.sh, discuss red cells (contract vs regression)
+               - scoreboard.sh, discuss red cells (all of them are regressions or
+                 missing behaviour; grey cells show retired scenarios)
   1:40-2:00  History grid, code walkthrough of both tracks, discussion:
              speed vs safety, "isn't XP just passing because it wrote the same
              tests?", what changes with Opus (verifiability argument)
@@ -208,7 +376,8 @@ replay.sh <from> <to>
     Reduce the risk with rehearsal data.
   - Live latency or outage: use the pre-built tags plus recorded best-run
     tags as fallback.
-  - An agent discovers the acceptance suite: path isolation and deny rules
+  - An agent discovers the acceptance suite: sandbox read rules, permission prompts,
+    and keeping the control repo away from the tracks
     (section 2).
   - Accusations of unfair prompting: identical prompts, the diff check, and
     the committed timestamps.
@@ -218,12 +387,17 @@ replay.sh <from> <to>
 
 9. ORDER OF WORK
 ----------------
-  1. Resolve D1-D5
-  2. Build the skeleton and create both track repos from it
-  3. Write both CLAUDE.md files and the isolation settings
-  4. Facilitator repo: write feature 01 (prompt, API, scenarios, steps) and
+  1. Build the skeleton in control/track/, with the vanilla CLAUDE.md and
+     the isolation settings. Write control/xp-claude-addition.md.
+  2. Manually: create the florist-track GitHub repo, clone it twice, append
+     the XP addition in florist-xp, commit, tag (section 2, "Setting up the
+     tracks")
+  3. Control repo: write feature 01 (prompt, API, scenarios, steps) and
      scoreboard.sh, then run it end to end by hand once
-  5. deliver.sh, reset-tracks.sh, replay.sh
-  6. Features 02-08 (twists last), with the consistency check per tag
-  7. Rehearsals (section 6), and tune
-  8. Pre-build features 1-3, tag them, and prepare fallback tags and slides
+  4. deliver.sh, reset-tracks.sh, replay.sh
+  5. Features 02-03, plus pilot-twist on the `pilot` branch
+  6. PILOT (section 6a). Go / sharpen / fix decision with the user.
+  7. Features 04-08 (twists last), with the consistency check per tag
+  8. Full rehearsals (section 6b), and tune
+  9. Pre-build features 1-3 in the sessions that will continue live, tag
+     them, snapshot the sessions, and prepare fallback tags and slides
